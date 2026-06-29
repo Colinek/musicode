@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MusiCode</title>
+<!-- soundfont-player loaded dynamically at runtime -->
+<style>
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #161920;
+    --panel:    #1e2130;
+    --border:   #2a2f45;
+    --accent:   #4ade80;
+    --accent2:  #818cf8;
+    --warn:     #fb923c;
+    --error:    #f87171;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --note-c:   #4ade80;
+    --note-d:   #34d399;
+    --note-e:   #2dd4bf;
+    --note-f:   #38bdf8;
+    --note-g:   #818cf8;
+    --note-a:   #c084fc;
+    --note-b:   #f472b6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-family: 'Courier New', monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--accent2); }
+
+  .tagline {
+    font-size: 0.75rem;
+    color: var(--muted);
+    flex: 1;
+  }
+
+  .header-btns { display: flex; gap: 8px; }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    padding: 6px 14px;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-play {
+    background: var(--accent);
+    color: #0d0f14;
+    font-weight: 700;
+    font-size: 0.9rem;
+    padding: 7px 22px;
+  }
+  .btn-play:hover:not(:disabled) { opacity: 0.88; }
+
+  .btn-stop {
+    background: var(--error);
+    color: #0d0f14;
+    font-weight: 700;
+  }
+  .btn-stop:hover:not(:disabled) { opacity: 0.88; }
+
+  .btn-secondary {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Main layout ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Editor pane ── */
+  .editor-pane {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .pane-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 7px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  #editor {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    padding: 16px 18px;
+    border: none;
+    outline: none;
+    resize: none;
+    tab-size: 2;
+    overflow-y: auto;
+    caret-color: var(--accent);
+  }
+  #editor::selection { background: #4ade8033; }
+  #editor::placeholder { color: var(--muted); }
+
+  /* ── Right pane ── */
+  .right-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Piano roll */
+  .piano-roll-wrap {
+    flex-shrink: 0;
+    padding: 12px 14px 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .piano-roll-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .piano-roll {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 48px;
+  }
+
+  .pr-key {
+    flex: 1;
+    border-radius: 3px 3px 5px 5px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    transition: background 0.08s, transform 0.08s;
+    position: relative;
+  }
+  .pr-key.white { height: 48px; }
+  .pr-key.black { height: 32px; background: #111827; }
+  .pr-key .key-label {
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.5rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .pr-key.lit {
+    transform: scaleY(1.06);
+    border-color: transparent;
+  }
+
+  /* Console */
+  .console-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #console {
+    flex: 1;
+    padding: 12px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    overflow-y: auto;
+    background: var(--bg);
+  }
+
+  .con-line { margin-bottom: 2px; }
+  .con-info { color: var(--muted); }
+  .con-ok   { color: var(--accent); }
+  .con-warn { color: var(--warn); }
+  .con-err  { color: var(--error); }
+  .con-play { color: var(--accent2); }
+  .con-note { color: var(--text); }
+
+  /* Drum grid preview */
+  .drum-preview {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .drum-preview-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .drum-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 0.65rem;
+  }
+
+  .drum-name {
+    width: 46px;
+    color: var(--muted);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .drum-steps {
+    display: flex;
+    gap: 2px;
+  }
+
+  .drum-step {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    transition: background 0.05s;
+  }
+  .drum-step.on { background: var(--accent2); border-color: var(--accent2); }
+  .drum-step.active { outline: 1px solid var(--accent); }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 5px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    font-size: 0.7rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .status-item span { color: var(--text); }
+  .save-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .save-dot.saved { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Music<span>Code</span></div>
+  <div class="tagline">code music · hear it · learn it</div>
+  <div class="header-btns">
+    <button class="btn-secondary" id="btnExample">Examples ▾</button>
+    <button class="btn-secondary" id="btnCopy">Copy Code</button>
+    <button class="btn-stop" id="btnStop" disabled>■ Stop</button>
+    <button class="btn-play" id="btnPlay">▶ Play</button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <div class="editor-pane">
+    <div class="pane-label">editor — type your MusiCode here</div>
+    <textarea id="editor" spellcheck="false" placeholder="; Welcome to MusiCode!
+; Try typing:
+;   SET tempo 120
+;   VOICE piano
+;     c d e f g2"></textarea>
+  </div>
+
+  <div class="right-pane">
+
+    <div class="piano-roll-wrap">
+      <div class="piano-roll-label">Piano Roll — lights up as notes play</div>
+      <div class="piano-roll" id="pianoRoll"></div>
+    </div>
+
+    <div class="console-wrap">
+      <div class="pane-label">console</div>
+      <div id="console"></div>
+    </div>
+
+    <div class="drum-preview" id="drumPreview" style="display:none">
+      <div class="drum-preview-label">Drum Grid</div>
+      <div id="drumGrid"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="status-bar">
+  <div class="save-dot" id="saveDot"></div>
+  <div class="status-item">Tempo: <span id="statTempo">120</span> bpm</div>
+  <div class="status-item">Octave: <span id="statOctave">4</span></div>
+  <div class="status-item">Key: <span id="statKey">C major</span></div>
+  <div class="status-item">Voices: <span id="statVoices">0</span></div>
+  <div style="flex:1"></div>
+  <div id="statMsg" style="color:var(--accent)"></div>
+</div>
+
+<!-- Example picker dropdown -->
+<div id="exampleMenu" style="display:none;position:fixed;z-index:100;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:0.8rem;min-width:180px;">
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  MusiCode 3.0  —  Interpreter + soundfont-player audio
+// ═══════════════════════════════════════════════════════
+
+// ── Piano roll setup ─────────────────────────────────
+const NOTE_NAMES = ['C','D','E','F','G','A','B'];
+const NOTE_COLORS = {C:'#4ade80',D:'#34d399',E:'#2dd4bf',F:'#38bdf8',G:'#818cf8',A:'#c084fc',B:'#f472b6'};
+const BLACK_NOTES = new Set(['C#','D#','F#','G#','A#','Db','Eb','Gb','Ab','Bb']);
+
+function buildPianoRoll() {
+  const roll = document.getElementById('pianoRoll');
+  roll.innerHTML = '';
+  // Two octaves: 3 and 4, white keys only for display simplicity
+  const octaves = [3,4,5];
+  const whites = ['C','D','E','F','G','A','B'];
+  octaves.forEach(oct => {
+    whites.forEach(n => {
+      const key = document.createElement('div');
+      key.className = 'pr-key white';
+      key.dataset.note = n + oct;
+      const lbl = document.createElement('span');
+      lbl.className = 'key-label';
+      lbl.textContent = n === 'C' ? n+oct : n;
+      key.appendChild(lbl);
+      roll.appendChild(key);
+    });
+  });
+}
+buildPianoRoll();
+
+function lightKey(noteName, duration) {
+  // noteName like "C4", "F#4"
+  const base = noteName.replace('#','').replace('b','').replace('_','');
+  const el = document.querySelector(`[data-note="${base}"]`);
+  if (!el) return;
+  const col = NOTE_COLORS[base[0]] || '#4ade80';
+  el.style.background = col;
+  el.classList.add('lit');
+  setTimeout(() => {
+    el.style.background = '';
+    el.classList.remove('lit');
+  }, Math.max(80, duration * 900));
+}
+
+// ── Console ───────────────────────────────────────────
+function con(msg, type='info') {
+  const div = document.getElementById('console');
+  const line = document.createElement('div');
+  line.className = `con-line con-${type}`;
+  line.textContent = msg;
+  div.appendChild(line);
+  div.scrollTop = div.scrollHeight;
+}
+function conClear() { document.getElementById('console').innerHTML = ''; }
+
+// ── Status bar ────────────────────────────────────────
+function updateStatus(state) {
+  document.getElementById('statTempo').textContent = state.tempo;
+  document.getElementById('statOctave').textContent = state.octave;
+  document.getElementById('statKey').textContent = state.key.replace('_',' ');
+  document.getElementById('statVoices').textContent = state.voices.length;
+}
+
+// ── LocalStorage save ─────────────────────────────────
+const STORAGE_KEY = 'musicode_1_0_source';
+let saveTimer = null;
+const editor = document.getElementById('editor');
+const saveDot = document.getElementById('saveDot');
+
+function saveCode() {
+  localStorage.setItem(STORAGE_KEY, editor.value);
+  saveDot.classList.add('saved');
+  document.getElementById('statMsg').textContent = 'Saved';
+  setTimeout(() => { document.getElementById('statMsg').textContent = ''; }, 1500);
+}
+
+editor.addEventListener('input', () => {
+  saveDot.classList.remove('saved');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveCode, 800);
+});
+
+// Load last save
+const saved = localStorage.getItem(STORAGE_KEY);
+if (saved) { editor.value = saved; saveDot.classList.add('saved'); }
+
+// ── Copy button ───────────────────────────────────────
+document.getElementById('btnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText(editor.value).then(() => {
+    document.getElementById('statMsg').textContent = 'Copied to clipboard!';
+    setTimeout(() => { document.getElementById('statMsg').textContent = ''; }, 2000);
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+//  MusiCode 2.0  —  Recursive parser + parallel playback
+// ═══════════════════════════════════════════════════════
+
+// ── Key signatures ────────────────────────────────────
+const KEY_SIGS = {
+  'c_major':  {},
+  'g_major':  {F:'#'},
+  'd_major':  {F:'#', C:'#'},
+  'a_major':  {F:'#', C:'#', G:'#'},
+  'e_major':  {F:'#', C:'#', G:'#', D:'#'},
+  'b_major':  {F:'#', C:'#', G:'#', D:'#', A:'#'},
+  'f_major':  {B:'b'},
+  'bb_major': {B:'b', E:'b'},
+  'eb_major': {B:'b', E:'b', A:'b'},
+  'ab_major': {B:'b', E:'b', A:'b', D:'b'},
+  'a_minor':  {},
+  'e_minor':  {F:'#'},
+  'd_minor':  {B:'b'},
+  'g_minor':  {B:'b', E:'b'},
+};
+
+const NOTE_NAMES_SET = new Set(['c','d','e','f','g','a','b']);
+
+// ── Duration parser ───────────────────────────────────
+// Given a raw suffix string (e.g. "2.", "/4", "4..") and a base beat length,
+// return the number of beats.
+function parseDurationSuffix(suffix, base) {
+  if (!suffix) return base;
+  suffix = suffix.trim();
+
+  // /N  — subdivide
+  const slashM = suffix.match(/^\/(\d+)(.*)$/);
+  if (slashM) {
+    let beats = base / parseInt(slashM[1]);
+    let dots = (slashM[2] || '').replace(/[^.]/g,'').length;
+    if (dots === 1) beats *= 1.5;
+    if (dots === 2) beats *= 1.75;
+    return beats;
+  }
+
+  // N  — multiply, then optional dots
+  const numM = suffix.match(/^(\d+)(\.*)$/);
+  if (numM) {
+    let beats = base * parseInt(numM[1]);
+    const dots = numM[2].length;
+    if (dots === 1) beats *= 1.5;
+    if (dots === 2) beats *= 1.75;
+    return beats;
+  }
+
+  // dots only
+  const dotM = suffix.match(/^(\.+)$/);
+  if (dotM) {
+    const dots = dotM[1].length;
+    let beats = base;
+    if (dots === 1) beats *= 1.5;
+    if (dots === 2) beats *= 1.75;
+    return beats;
+  }
+
+  return base;
+}
+
+// ── Note resolver ─────────────────────────────────────
+// Resolves a bare note token (no duration suffix) to a pitch string e.g. "F#4".
+// Returns null if not a valid note.
+function resolveNote(token, octave, keySig) {
+  let s = token.toLowerCase();
+  if (!s) return null;
+
+  // Count tick/comma octave modifiers
+  let octShift = 0;
+  // leading modifiers first, then trailing
+  while (s.endsWith("'")) { octShift++;  s = s.slice(0,-1); }
+  while (s.endsWith(',')) { octShift--;  s = s.slice(0,-1); }
+
+  // Accidental
+  let acc = '';
+  if      (s.endsWith('#')) { acc = '#'; s = s.slice(0,-1); }
+  else if (s.endsWith('_')) { acc = 'b'; s = s.slice(0,-1); }
+  else if (s.endsWith('n')) { acc = 'n'; s = s.slice(0,-1); } // natural override
+
+  if (!NOTE_NAMES_SET.has(s)) return null;
+
+  const letter = s.toUpperCase();
+
+  // Apply key signature if no explicit accidental
+  let finalAcc = acc;
+  if (acc === '') {
+    const sigAcc = (keySig || {})[letter];
+    if (sigAcc) finalAcc = sigAcc; // '#' or 'b'
+  }
+  if (finalAcc === 'n') finalAcc = '';
+
+  return letter + finalAcc + (octave + octShift);
+}
+
+// ── Tokeniser ─────────────────────────────────────────
+// Breaks a string into an array of tokens for the recursive parser.
+// Token types: 'note', 'rest', 'chord_ref', 'lbracket', 'rbracket', 'number', 'keyword'
+function tokenise(str) {
+  const tokens = [];
+  let i = 0;
+  while (i < str.length) {
+    // skip whitespace
+    if (/\s/.test(str[i])) { i++; continue; }
+    // comment
+    if (str[i] === ';') break;
+    // bracket
+    if (str[i] === '[') { tokens.push({type:'lbracket'}); i++; continue; }
+    if (str[i] === ']') {
+      // grab optional duration suffix immediately after ]
+      let j = i+1;
+      let suf = '';
+      if (j < str.length && str[j] === '/') {
+        suf += str[j++];
+        while (j < str.length && /\d/.test(str[j])) suf += str[j++];
+        while (j < str.length && str[j] === '.') suf += str[j++];
+      } else {
+        while (j < str.length && /[\d]/.test(str[j])) suf += str[j++];
+        while (j < str.length && str[j] === '.') suf += str[j++];
+      }
+      tokens.push({type:'rbracket', suffix: suf});
+      i = j;
+      continue;
+    }
+    // read a word token
+    let j = i;
+    while (j < str.length && !/[\s\[\];]/.test(str[j])) j++;
+    const word = str.slice(i, j);
+    i = j;
+    if (!word) continue;
+
+    const upper = word.toUpperCase();
+    // keywords that appear inline in a voice block
+    if (upper === 'REPEAT' || upper === 'OCTAVE' || upper === 'DYNAMIC' ||
+        upper === 'CRESCENDO' || upper === 'DIMINUENDO' ||
+        upper === 'PP' || upper === 'P' || upper === 'MP' ||
+        upper === 'MF' || upper === 'F' || upper === 'FF') {
+      tokens.push({type:'keyword', value: upper});
+      continue;
+    }
+    // Pure number
+    if (/^\d+$/.test(word)) {
+      tokens.push({type:'number', value: parseInt(word)});
+      continue;
+    }
+
+    // Could be: note+suffix, rest+suffix, chord_ref+suffix
+    // Split bare token from duration suffix
+    // Suffix is: optional /N[.] OR optional digits[.]
+    let bare = word;
+    let suffix = '';
+
+    // try /N suffix first
+    const slashM = bare.match(/^(.+?)(\/.+)$/);
+    if (slashM) { bare = slashM[1]; suffix = slashM[2]; }
+    else {
+      // trailing digits then dots
+      const numDotM = bare.match(/^(.+?)(\d+\.*)$/);
+      if (numDotM && NOTE_NAMES_SET.has(numDotM[1][0].toLowerCase())) {
+        bare = numDotM[1]; suffix = numDotM[2];
+      } else {
+        // trailing dots only
+        const dotM = bare.match(/^(.+?)(\.+)$/);
+        if (dotM) { bare = dotM[1]; suffix = dotM[2]; }
+      }
+    }
+
+    const bareLower = bare.toLowerCase();
+    // Chord names contain '_' or start with non-note letter
+    // Valid note bare tokens: c, f#, b_, fn, c', c'' etc.
+    const looksLikeChord = bareLower.includes('_') && bareLower.length > 2;
+    const rootLetter = bareLower.replace(/[#_n'",]/g,'')[0] || '';
+
+    if (bareLower === 'r' || /^r[\d./]/.test(bareLower)) {
+      const restSuf = bareLower.slice(1) + suffix;
+      tokens.push({type:'rest', suffix: restSuf});
+    } else if (!looksLikeChord && NOTE_NAMES_SET.has(rootLetter)) {
+      tokens.push({type:'note', bare, suffix});
+    } else {
+      tokens.push({type:'chord_ref', name: bareLower, suffix});
+    }
+  }
+  return tokens;
+}
+
+// ── Recursive event compiler ──────────────────────────
+// Compiles a token stream into a flat array of {pitch|pitches, beats, isChord} events.
+// Returns { events, consumed } where consumed = number of tokens used.
+function compileTokens(tokens, pos, voiceState, globalState) {
+  const events = [];
+
+  while (pos < tokens.length) {
+    const tok = tokens[pos];
+
+    // ── REPEAT N [ block ] ──
+    if (tok.type === 'keyword' && tok.value === 'REPEAT') {
+      pos++;
+      // next must be a number
+      const countTok = tokens[pos];
+      if (!countTok || countTok.type !== 'number') {
+        globalState.errors.push('REPEAT needs a count number');
+        break;
+      }
+      const count = countTok.value;
+      pos++;
+
+      // next must be [
+      if (!tokens[pos] || tokens[pos].type !== 'lbracket') {
+        globalState.errors.push('REPEAT needs [ ... ] block');
+        break;
+      }
+      pos++; // consume [
+
+      // Recursively compile until matching ]
+      const { events: blockEvents, pos: afterBlock } = compileBlock(tokens, pos, voiceState, globalState);
+      pos = afterBlock;
+
+      // Grab optional duration suffix on ] (already in rbracket token)
+      // (blockEvents already have their own durations — rbracket suffix ignored at repeat level)
+
+      for (let r = 0; r < count; r++) {
+        for (const ev of blockEvents) events.push({...ev});
+      }
+      continue;
+    }
+
+    // ── OCTAVE N ── (inline voice octave shift)
+    if (tok.type === 'keyword' && tok.value === 'OCTAVE') {
+      pos++;
+      const numTok = tokens[pos];
+      if (numTok && numTok.type === 'number') {
+        voiceState.octave = numTok.value;
+        pos++;
+      }
+      continue;
+    }
+
+    // ── DYNAMIC / CRESCENDO / DIMINUENDO ── (inline, stored on voice)
+    if (tok.type === 'keyword' && (tok.value === 'DYNAMIC' || tok.value === 'CRESCENDO' || tok.value === 'DIMINUENDO')) {
+      pos++;
+      const valTok = tokens[pos];
+      const beatsSoFar = events.reduce((s,e)=>s+e.beats,0);
+      if (tok.value === 'DYNAMIC') {
+        const dynMap = {pp:0.12,p:0.25,mp:0.4,mf:0.6,f:0.8,ff:1.0};
+        const vol = dynMap[(valTok?.value || valTok?.bare || valTok?.name || '').toLowerCase()] || 0.6;
+        events.push({type:'dynamic', vol, beats:0});
+        pos++;
+      } else {
+        const beats = (valTok?.type === 'number') ? valTok.value : 4;
+        events.push({type: tok.value.toLowerCase(), beats, beatOffset: beatsSoFar});
+        pos++;
+      }
+      continue;
+    }
+
+    // ── [ inline chord ] ──
+    if (tok.type === 'lbracket') {
+      pos++;
+      const { events: chordNotes, pos: afterChord } = compileBlock(tokens, pos, voiceState, globalState);
+      pos = afterChord; // points past rbracket
+      // Duration from rbracket suffix
+      const rbTok = tokens[pos - 1]; // rbracket was consumed by compileBlock
+      const chordBeats = parseDurationSuffix(rbTok?.suffix || '', voiceState.baseLength);
+      // Collect pitches from the chord notes (they're all simultaneous)
+      const pitches = chordNotes.filter(e => e.pitch && e.pitch !== 'rest').map(e => e.pitch);
+      if (pitches.length) events.push({isChord: true, pitches, beats: chordBeats});
+      continue;
+    }
+
+    // ── rbracket — end of a block (handled by caller) ──
+    if (tok.type === 'rbracket') break;
+
+    // ── rest ──
+    if (tok.type === 'rest') {
+      const beats = parseDurationSuffix(tok.suffix || '', voiceState.baseLength);
+      events.push({pitch:'rest', beats});
+      pos++;
+      continue;
+    }
+
+    // ── note ──
+    if (tok.type === 'note') {
+      const beats = parseDurationSuffix(tok.suffix, voiceState.baseLength);
+      const pitch = resolveNote(tok.bare, voiceState.octave, globalState.keySig);
+      if (pitch) {
+        events.push({pitch, beats});
+      } else {
+        globalState.errors.push(`Cannot resolve note: ${tok.bare}`);
+      }
+      pos++;
+      continue;
+    }
+
+    // ── named chord reference ──
+    if (tok.type === 'chord_ref') {
+      const def = globalState.chords[tok.name];
+      const beats = parseDurationSuffix(tok.suffix, voiceState.baseLength);
+      if (def) {
+        const pitches = def.notes
+          .map(n => {
+            // Each note in chord def may have its own octave modifiers
+            // but no duration suffix
+            return resolveNote(n, voiceState.octave, globalState.keySig);
+          })
+          .filter(Boolean);
+        if (pitches.length) events.push({isChord:true, pitches, beats});
+      } else {
+        globalState.errors.push(`Unknown chord or note: ${tok.name}`);
+      }
+      pos++;
+      continue;
+    }
+
+    // ── number at top level — treat as duration multiplier for previous note? ──
+    // (Shouldn't normally happen; skip)
+    pos++;
+  }
+
+  return { events, pos };
+}
+
+// compileBlock: compile until ] and consume it; return events + pos after ]
+function compileBlock(tokens, pos, voiceState, globalState) {
+  const events = [];
+  while (pos < tokens.length) {
+    const tok = tokens[pos];
+    if (tok.type === 'rbracket') {
+      pos++; // consume ]
+      return { events, pos };
+    }
+    if (tok.type === 'note') {
+      const beats = parseDurationSuffix(tok.suffix, voiceState.baseLength);
+      const pitch = resolveNote(tok.bare, voiceState.octave, globalState.keySig);
+      if (pitch) events.push({pitch, beats});
+      pos++;
+      continue;
+    }
+    if (tok.type === 'rest') {
+      events.push({pitch:'rest', beats: parseDurationSuffix(tok.suffix, voiceState.baseLength)});
+      pos++;
+      continue;
+    }
+    if (tok.type === 'chord_ref') {
+      const def = globalState.chords[tok.name];
+      const beats = parseDurationSuffix(tok.suffix, voiceState.baseLength);
+      if (def) {
+        const pitches = def.notes.map(n => resolveNote(n, voiceState.octave, globalState.keySig)).filter(Boolean);
+        if (pitches.length) events.push({isChord:true, pitches, beats});
+      }
+      pos++;
+      continue;
+    }
+    if (tok.type === 'lbracket') {
+      // nested chord inside a block — collect notes until ]
+      pos++;
+      const innerNotes = [];
+      while (pos < tokens.length && tokens[pos].type !== 'rbracket') {
+        const t = tokens[pos];
+        if (t.type === 'note') {
+          innerNotes.push(resolveNote(t.bare, voiceState.octave, globalState.keySig));
+        }
+        pos++;
+      }
+      const rbTok = tokens[pos]; pos++; // consume ]
+      const beats = parseDurationSuffix(rbTok?.suffix||'', voiceState.baseLength);
+      const pitches = innerNotes.filter(Boolean);
+      if (pitches.length) events.push({isChord:true, pitches, beats});
+      continue;
+    }
+    // Anything else (keyword etc) in a block — skip
+    pos++;
+  }
+  return { events, pos };
+}
+
+// ── Main parser ───────────────────────────────────────
+function parse(source) {
+  const globalState = {
+    tempo: 120,
+    octave: 4,
+    key: 'c_major',
+    baseLength: 1,
+    keySig: {},
+    voices: [],
+    drums: null,
+    chords: {},
+    vars: {},
+    errors: [],
+  };
+
+  const lines = source.split('\n');
+  let currentVoice = null;
+  let inDrums = false;
+  let drumDef = null;
+
+  for (let li = 0; li < lines.length; li++) {
+    let line = lines[li];
+    // Strip comment
+    const semi = line.indexOf(';');
+    if (semi >= 0) line = line.slice(0, semi);
+    line = line.trim();
+    if (!line) continue;
+
+    const parts = line.split(/\s+/);
+    const cmd = parts[0].toUpperCase();
+
+    // ── SET ──
+    if (cmd === 'SET') {
+      const k = (parts[1]||'').toLowerCase();
+      const v = parts[2] || '';
+      if (k === 'tempo')  globalState.tempo = parseInt(v) || 120;
+      else if (k === 'octave') globalState.octave = parseInt(v) || 4;
+      else if (k === 'key') {
+        globalState.key = v.toLowerCase();
+        globalState.keySig = KEY_SIGS[globalState.key] || {};
+      }
+      else if (k === 'length') {
+        const lmap = {crotchet:1,quaver:0.5,minim:2,semibreve:4,semiquaver:0.25};
+        globalState.baseLength = lmap[v.toLowerCase()] || 1;
+      }
+      else globalState.vars[k] = isNaN(v) ? v : parseFloat(v);
+      inDrums = false; currentVoice = null;
+      continue;
+    }
+
+    // ── CHORD definition ──
+    if (cmd === 'CHORD') {
+      const name = (parts[1]||'').toLowerCase();
+      const open = line.indexOf('[');
+      const close = line.indexOf(']');
+      if (name && open >= 0 && close > open) {
+        const notesRaw = line.slice(open+1, close).trim().split(/\s+/);
+        globalState.chords[name] = { notes: notesRaw };
+      }
+      inDrums = false; currentVoice = null;
+      continue;
+    }
+
+    // ── VOICE ──
+    if (cmd === 'VOICE') {
+      const instrument = (parts[1]||'piano').toLowerCase();
+      currentVoice = {
+        instrument,
+        events: [],
+        octave: globalState.octave,
+        baseLength: globalState.baseLength,
+      };
+      globalState.voices.push(currentVoice);
+      inDrums = false;
+      // Notes on same line?
+      const rest = parts.slice(2).join(' ');
+      if (rest.trim()) {
+        const toks = tokenise(rest);
+        const vs = { octave: currentVoice.octave, baseLength: currentVoice.baseLength };
+        const { events } = compileTokens(toks, 0, vs, globalState);
+        currentVoice.octave = vs.octave;
+        events.forEach(e => currentVoice.events.push(e));
+      }
+      continue;
+    }
+
+    // ── OCTAVE (standalone, applies to current voice) ──
+    if (cmd === 'OCTAVE' && currentVoice) {
+      currentVoice.octave = parseInt(parts[1]) || 4;
+      continue;
+    }
+
+    // ── DYNAMIC / CRESCENDO / DIMINUENDO (standalone) ──
+    if (cmd === 'DYNAMIC' && currentVoice) {
+      const dynMap = {pp:0.12,p:0.25,mp:0.4,mf:0.6,f:0.8,ff:1.0};
+      const vol = dynMap[(parts[1]||'').toLowerCase()] || 0.6;
+      currentVoice.events.push({type:'dynamic', vol, beats:0});
+      continue;
+    }
+    if ((cmd === 'CRESCENDO' || cmd === 'DIMINUENDO') && currentVoice) {
+      currentVoice.events.push({type: cmd.toLowerCase(), beats: parseInt(parts[1])||4});
+      continue;
+    }
+
+    // ── DRUMS ──
+    if (cmd === 'DRUMS') {
+      inDrums = true;
+      currentVoice = null;
+      drumDef = { bars: 1, rows: {} };
+      parts.slice(1).forEach(p => {
+        const [k,v] = p.split('=');
+        if (k === 'bars') drumDef.bars = parseInt(v)||1;
+      });
+      globalState.drums = drumDef;
+      continue;
+    }
+
+    // ── Drum row ──
+    if (inDrums && line.includes('|')) {
+      const pipeIdx = line.indexOf('|');
+      const drumName = line.slice(0, pipeIdx).trim().toLowerCase();
+      const patternPart = line.slice(pipeIdx);
+      const steps = [];
+      let inside = false;
+      for (const ch of patternPart) {
+        if (ch === '|') { inside = !inside; continue; }
+        if (inside && (ch === 'x' || ch === '.')) steps.push(ch === 'x');
+      }
+      if (drumName && steps.length) drumDef.rows[drumName] = steps;
+      continue;
+    }
+
+    // ── Note content for current voice ──
+    if (currentVoice && !inDrums) {
+      const toks = tokenise(line);
+      const vs = { octave: currentVoice.octave, baseLength: currentVoice.baseLength };
+      const { events } = compileTokens(toks, 0, vs, globalState);
+      currentVoice.octave = vs.octave; // persist octave changes
+      events.forEach(e => currentVoice.events.push(e));
+    }
+  }
+
+  return globalState;
+}
+
+// ═══════════════════════════════════════════════════════
+//  DRUM GRID RENDERER
+// ═══════════════════════════════════════════════════════
+function renderDrumGrid(drums) {
+  const wrap = document.getElementById('drumPreview');
+  const grid = document.getElementById('drumGrid');
+  if (!drums || Object.keys(drums.rows).length === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  grid.innerHTML = '';
+  Object.entries(drums.rows).forEach(([name, steps]) => {
+    const row = document.createElement('div');
+    row.className = 'drum-row';
+    const label = document.createElement('div');
+    label.className = 'drum-name';
+    label.textContent = name;
+    row.appendChild(label);
+    const stepsDiv = document.createElement('div');
+    stepsDiv.className = 'drum-steps';
+    steps.forEach((on, i) => {
+      const s = document.createElement('div');
+      s.className = 'drum-step' + (on ? ' on' : '');
+      s.dataset.drumName = name;
+      s.dataset.stepIdx = i;
+      stepsDiv.appendChild(s);
+    });
+    row.appendChild(stepsDiv);
+    grid.appendChild(row);
+  });
+}
+
+function flashDrumStep(drumName, stepIdx) {
+  const el = document.querySelector(`.drum-step[data-drum-name="${drumName}"][data-step-idx="${stepIdx}"]`);
+  if (!el) return;
+  el.style.background = '#4ade80';
+  setTimeout(() => { el.style.background = ''; }, 70);
+}
+
+// ═══════════════════════════════════════════════════════
+//  AUDIO ENGINE  —  soundfont-player + Web Audio API
+//  Pattern borrowed from Classroom Composer (Colin, 2025)
+// ═══════════════════════════════════════════════════════
+
+// ── Soundfont-player CDN sources (tried in order) ────
+const SF_PLAYER_SOURCES = [
+  'https://cdnjs.cloudflare.com/ajax/libs/soundfont-player/0.15.7/soundfont-player.min.js',
+  'https://unpkg.com/soundfont-player@0.15.7/dist/soundfont-player.min.js',
+  'https://cdn.jsdelivr.net/npm/soundfont-player@0.15.7/dist/soundfont-player.min.js',
+];
+
+// ── Soundfont data providers (tried in order) ─────────
+const SF_DATA_PROVIDERS = [
+  (name, sf, fmt) => `https://cdn.jsdelivr.net/gh/gleitz/midi-js-soundfonts@gh-pages/${sf}/${name}-${fmt}.js`,
+  (name, sf, fmt) => `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-${fmt}.js`,
+  (name, sf, fmt) => `https://unpkg.com/@midijs/soundfonts@latest/${sf}/${name}-${fmt}.js`,
+];
+const SF_NAME = 'MusyngKite';
+
+// ── Instrument ID map ─────────────────────────────────
+const INSTRUMENT_IDS = {
+  piano:    'acoustic_grand_piano',
+  keys:     'acoustic_grand_piano',
+  strings:  'string_ensemble_1',
+  violin:   'violin',
+  viola:    'viola',
+  cello:    'cello',
+  flute:    'flute',
+  clarinet: 'clarinet',
+  trumpet:  'trumpet',
+  brass:    'brass_section',
+  guitar:   'acoustic_guitar_steel',
+  bass:     'electric_bass_finger',
+  organ:    'church_organ',
+  choir:    'choir_aahs',
+  synth:    'lead_1_square',
+  pad:      'pad_2_warm',
+  marimba:  'marimba',
+  harp:     'orchestral_harp',
+};
+
+// ── Polyphonic instrument set ─────────────────────────
+const POLY_INSTRUMENTS = new Set([
+  'piano','keys','strings','guitar','synth','pad','organ','choir','harp','marimba'
+]);
+
+// ── Audio state ───────────────────────────────────────
+let audioCtx = null;
+let sfLibraryReady = false;
+let instrumentCache = {};   // instrumentId → Soundfont player
+let activeNodes = [];
+let isPlaying = false;
+let playbackTimers = [];
+
+function loadScript(url) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-sf-src="${url}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = url; s.async = true; s.dataset.sfSrc = url;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`Script load failed: ${url}`));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureSfLibrary() {
+  if (window.Soundfont && typeof Soundfont.instrument === 'function') {
+    sfLibraryReady = true; return true;
+  }
+  for (const url of SF_PLAYER_SOURCES) {
+    try {
+      await loadScript(url);
+      if (window.Soundfont && typeof Soundfont.instrument === 'function') {
+        sfLibraryReady = true;
+        con('Soundfont library loaded.', 'ok');
+        return true;
+      }
+    } catch(e) { /* try next */ }
+  }
+  con('⚠ Soundfont library unavailable — using fallback synth.', 'warn');
+  return false;
+}
+
+async function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  return audioCtx;
+}
+
+async function loadInstrument(instrumentName) {
+  const id = INSTRUMENT_IDS[instrumentName.toLowerCase()] || 'acoustic_grand_piano';
+  if (instrumentCache[id]) return instrumentCache[id];
+  if (!sfLibraryReady) return null;
+  const ctx = await ensureAudioCtx();
+  for (const providerFn of SF_DATA_PROVIDERS) {
+    try {
+      const player = await Soundfont.instrument(ctx, id, {
+        soundfont: SF_NAME,
+        format: 'mp3',
+        nameToUrl: (name, sf, fmt) => providerFn(name, sf, fmt),
+      });
+      instrumentCache[id] = player;
+      con(`  ✓ ${instrumentName} (${id}) loaded`, 'ok');
+      return player;
+    } catch(e) { /* try next provider */ }
+  }
+  con(`  ⚠ Could not load ${instrumentName} — using synth fallback`, 'warn');
+  return null;
+}
+
+// ── Fallback oscillator synth ─────────────────────────
+function noteToHz(pitchStr) {
+  // pitchStr like "C4", "F#4", "Bb3"
+  const m = pitchStr.match(/^([A-G])(#|b)?(\d)$/);
+  if (!m) return 440;
+  const semis = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+  let s = semis[m[1]] + (m[2]==='#'?1:m[2]==='b'?-1:0);
+  return 440 * Math.pow(2, ((parseInt(m[3])+1)*12 + s - 69) / 12);
+}
+
+function playSynthFallback(pitchStr, when, dur) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = noteToHz(pitchStr);
+  gain.gain.setValueAtTime(0.001, when);
+  gain.gain.exponentialRampToValueAtTime(0.25, when + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, when + dur - 0.01);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(when); osc.stop(when + dur);
+  activeNodes.push({ stop: () => { try { osc.stop(); } catch(e){} } });
+}
+
+function playDrumFallback(drumName, when) {
+  if (!audioCtx) return;
+  const ctx = audioCtx;
+  const isDrum = drumName === 'kick' || drumName === 'tom' || drumName === 'tom2';
+  const isNoise = drumName === 'snare' || drumName === 'clap';
+
+  if (isDrum) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    const baseFreq = drumName === 'kick' ? 80 : drumName === 'tom' ? 150 : 100;
+    osc.frequency.setValueAtTime(baseFreq * 3, when);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq, when + 0.4);
+    gain.gain.setValueAtTime(0.001, when);
+    gain.gain.exponentialRampToValueAtTime(0.5, when + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.4);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(when); osc.stop(when + 0.45);
+  } else if (isNoise) {
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.15), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, when);
+    gain.gain.exponentialRampToValueAtTime(0.3, when + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.15);
+    src.connect(gain); gain.connect(ctx.destination);
+    src.start(when); src.stop(when + 0.16);
+  } else {
+    // hihat / ride / openhat — short metallic noise
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.08), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i=0; i<d.length; i++) d[i] = Math.random()*2-1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'highpass'; filt.frequency.value = 7000;
+    const gain = ctx.createGain();
+    const decayTime = (drumName === 'openhat' || drumName === 'ride') ? 0.3 : 0.05;
+    gain.gain.setValueAtTime(0.001, when);
+    gain.gain.exponentialRampToValueAtTime(0.2, when + 0.001);
+    gain.gain.exponentialRampToValueAtTime(0.001, when + decayTime);
+    src.connect(filt); filt.connect(gain); gain.connect(ctx.destination);
+    src.start(when); src.stop(when + decayTime + 0.01);
+  }
+}
+
+// ── Stop all active audio ─────────────────────────────
+function stopAll() {
+  playbackTimers.forEach(t => clearTimeout(t));
+  playbackTimers = [];
+  activeNodes.forEach(n => { try { n.stop(); } catch(e){} });
+  activeNodes = [];
+  isPlaying = false;
+  document.getElementById('btnPlay').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  con('— stopped —', 'info');
+}
+document.getElementById('btnStop').addEventListener('click', stopAll);
+
+// ── Main play function ────────────────────────────────
+async function playMusic() {
+  if (isPlaying) stopAll();
+
+  conClear();
+  con('Parsing...', 'info');
+  const state = parse(editor.value);
+  state.errors.forEach(e => con('⚠ ' + e, 'warn'));
+  updateStatus(state);
+  renderDrumGrid(state.drums);
+
+  if (state.voices.length === 0 && !state.drums) {
+    con('Nothing to play. Add a VOICE or DRUMS block.', 'warn');
+    return;
+  }
+
+  con('Loading instruments...', 'info');
+  await ensureAudioCtx();
+  await ensureSfLibrary();
+
+  // Pre-load all needed instruments
+  const needed = [...new Set(state.voices.map(v => v.instrument))];
+  const players = {};
+  await Promise.all(needed.map(async name => {
+    players[name] = await loadInstrument(name);
+  }));
+
+  const ctx = audioCtx;
+  const beatSec = 60 / state.tempo;
+  const now = ctx.currentTime + 0.1; // small startup offset
+  let maxEndTime = now;
+
+  con(`▶ Tempo: ${state.tempo} bpm · Key: ${state.key.replace(/_/g,' ')} · Voices: ${state.voices.length}`, 'ok');
+
+  // ── Schedule voices ───────────────────────────────
+  state.voices.forEach((voice, vi) => {
+    const player = players[voice.instrument];
+    let cursor = 0; // beats
+    let gainMult = 0.75; // mf default
+
+    voice.events.forEach(ev => {
+      if (ev.type === 'dynamic') { gainMult = ev.vol; return; }
+      if (ev.type === 'crescendo' || ev.type === 'diminuendo') { cursor += ev.beats; return; }
+      if (ev.pitch === 'rest') { cursor += ev.beats; return; }
+
+      const when = now + cursor * beatSec;
+      const dur = Math.max(0.05, ev.beats * beatSec - 0.03);
+      const pitches = ev.isChord ? ev.pitches : [ev.pitch];
+
+      pitches.forEach(pitch => {
+        if (player) {
+          try {
+            const sfPitch = pitch.replace('#', 's'); // soundfont-player uses 'Fs4' not 'F#4'
+            const handle = player.play(sfPitch, when, { duration: dur, gain: gainMult });
+            if (handle && typeof handle.stop === 'function') {
+              activeNodes.push({ stop: () => { try { handle.stop(); } catch(e){} } });
+            }
+          } catch(e) {
+            playSynthFallback(pitch, when, dur);
+          }
+        } else {
+          playSynthFallback(pitch, when, dur);
+        }
+        // Schedule piano roll light-up
+        const delay = (when - ctx.currentTime) * 1000;
+        const t = setTimeout(() => lightKey(pitch, dur), Math.max(0, delay));
+        playbackTimers.push(t);
+      });
+
+      const endTime = when + dur;
+      if (endTime > maxEndTime) maxEndTime = endTime;
+      cursor += ev.beats;
+    });
+
+    con(`  ${voice.instrument}: ${voice.events.filter(e=>!e.type&&e.pitch!=='rest').length} notes`, 'play');
+  });
+
+  // ── Schedule drums ─────────────────────────────────
+  if (state.drums && Object.keys(state.drums.rows).length) {
+    const totalBars = state.drums.bars;
+    const drumBeatSec = beatSec;
+
+    Object.entries(state.drums.rows).forEach(([drumName, steps]) => {
+      const stepDur = (4 / steps.length) * drumBeatSec;
+      for (let bar = 0; bar < totalBars; bar++) {
+        steps.forEach((on, si) => {
+          if (!on) return;
+          const when = now + si * stepDur + bar * 4 * drumBeatSec;
+          playDrumFallback(drumName, when);
+          const endTime = when + 0.5;
+          if (endTime > maxEndTime) maxEndTime = endTime;
+          // flash drum step
+          const delay = (when - ctx.currentTime) * 1000;
+          const t = setTimeout(() => flashDrumStep(drumName, si), Math.max(0, delay));
+          playbackTimers.push(t);
+        });
+      }
+    });
+    con(`  drums: ${Object.keys(state.drums.rows).join(', ')}`, 'play');
+  }
+
+  isPlaying = true;
+  document.getElementById('btnPlay').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+
+  // Auto-stop
+  const stopDelay = (maxEndTime - ctx.currentTime + 0.5) * 1000;
+  const t = setTimeout(() => { if (isPlaying) { stopAll(); con('✓ Finished', 'ok'); } }, stopDelay);
+  playbackTimers.push(t);
+}
+
+document.getElementById('btnPlay').addEventListener('click', playMusic);
+// ═══════════════════════════════════════════════════════
+//  EXAMPLES
+// ═══════════════════════════════════════════════════════
+const EXAMPLES = {
+  'Hello melody': `; Your first MusiCode program!
+; Try changing the notes, then press Play.
+SET tempo 100
+SET octave 4
+
+VOICE piano
+  c d e f g2 r g2
+  a g f e d2 r c4`,
+
+  'REPEAT': `; REPEAT plays a block multiple times
+SET tempo 120
+SET octave 4
+
+VOICE piano
+  REPEAT 4 [c e g]
+  REPEAT 2 [g e c]
+  c4`,
+
+  'Two voices': `; Two voices play simultaneously
+SET tempo 110
+SET octave 5
+SET key g_major
+
+VOICE flute
+  d' c' b a g2 r
+  a b c'2 d'4
+
+VOICE bass
+  OCTAVE 3
+  g2 g2 c2 d2
+  e_2 d2 c4`,
+
+  'Chords + bass': `; Named chords with a bass line
+SET tempo 100
+SET octave 4
+
+CHORD c_maj [c e g]
+CHORD f_maj [f a c']
+CHORD g_maj [g b d']
+CHORD a_min [a c' e']
+
+VOICE strings
+  REPEAT 2 [c_maj2 f_maj2 g_maj2 c_maj2]
+
+VOICE piano
+  REPEAT 2 [c e g e f a c' a g b d' b c4]
+
+VOICE bass
+  OCTAVE 3
+  REPEAT 2 [c2 f2 g2 c2]`,
+
+  'Drums + melody': `; Rock beat with synth melody
+SET tempo 128
+SET octave 4
+
+VOICE synth
+  c e g e c e g2
+  f a c' a f a f2
+
+DRUMS bars=2
+  kick    | x . . . x . . . |
+  snare   | . . x . . . x . |
+  hihat   | x x x x x x x x |
+  openhat | . . . x . . . x |`,
+
+  'Full band': `; Full arrangement
+SET tempo 120
+SET octave 4
+SET key g_major
+
+CHORD g_maj [g b d']
+CHORD c_maj [c e g]
+CHORD d_maj [d f# a]
+
+VOICE strings
+  DYNAMIC mp
+  REPEAT 2 [g_maj2 c_maj2 d_maj2 g_maj2]
+
+VOICE flute
+  DYNAMIC mf
+  OCTAVE 5
+  d' d' e' d' c'2 b
+  c' c' d' c' b2 a
+  g2 a2 b2 g'2
+
+VOICE bass
+  OCTAVE 3
+  REPEAT 2 [g2 c2 d2 g2]
+
+DRUMS bars=4
+  kick  | x . . . x . . . |
+  snare | . . x . . . x . |
+  hihat | x x x x x x x x |`,
+};
+
+const exampleMenu = document.getElementById('exampleMenu');
+const exampleBtn  = document.getElementById('btnExample');
+
+Object.entries(EXAMPLES).forEach(([name, code]) => {
+  const item = document.createElement('div');
+  item.style.cssText = 'padding:6px 10px;cursor:pointer;border-radius:4px;color:var(--text)';
+  item.textContent = name;
+  item.addEventListener('mouseenter', () => item.style.background = 'var(--border)');
+  item.addEventListener('mouseleave', () => item.style.background = '');
+  item.addEventListener('click', () => {
+    editor.value = code;
+    saveCode();
+    exampleMenu.style.display = 'none';
+    conClear();
+    con(`Loaded: "${name}"`, 'ok');
+    con('Press ▶ Play to hear it', 'info');
+  });
+  exampleMenu.appendChild(item);
+});
+
+exampleBtn.addEventListener('click', (e) => {
+  const rect = exampleBtn.getBoundingClientRect();
+  if (exampleMenu.style.display === 'none') {
+    exampleMenu.style.left = rect.left + 'px';
+    exampleMenu.style.top  = (rect.bottom + 4) + 'px';
+    exampleMenu.style.display = 'block';
+  } else {
+    exampleMenu.style.display = 'none';
+  }
+  e.stopPropagation();
+});
+document.addEventListener('click', () => { exampleMenu.style.display = 'none'; });
+
+// ── Boot message ──
+con('MusiCode 2.0 ready.', 'ok');
+con('Type your code and press ▶ Play', 'info');
+if (saved) con('↩ Last session restored.', 'info');
+
+</script>
+</body>
+</html>
